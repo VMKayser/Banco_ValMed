@@ -1,0 +1,2305 @@
+openapi: 3.1.0
+info:
+  title: Banco ValMed (simulado)
+  description: |-
+    Banco simulado, sin dinero real, para cobrar con QR dinámico.
+
+    * **api-market**: la misma API Market (Pago QR) del BNB, para poder migrar al banco real cambiando solo la URL y las credenciales.
+    * **integración**: API propia de ValMed con extras (eventos en vivo, devoluciones, `X-Api-Key`).
+    * **público**: estado, imagen y eventos en vivo (SSE) de un cobro, sin credenciales.
+    * **sandbox**: pagar un cobro por API, sin la app.
+    * **app**: lo que usa la web app del banco (sesión con `Bearer`).
+
+    Montos como string con 2 decimales (`"350.00"`), moneda BOB, fechas ISO-8601 UTC. Errores con el cuerpo `{ code, message, details, traceId }`.
+  license:
+    name: ''
+  version: 1.0.0
+paths:
+  /ClientAuthentication.API/api/v1/auth/UpdateCredentials:
+    post:
+      tags:
+      - api-market
+      summary: |-
+        Cambia el `authorizationId`. El BNB obliga a hacerlo antes del primer uso;
+        aquí es opcional. `X-Api-Key` no cambia.
+      operationId: cambiar_credenciales
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PedidoCredenciales'
+        required: true
+      responses:
+        '200':
+          description: '`success: true` (message vacío) o `success: false` con el motivo'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+        '400':
+          description: Cuerpo mal formado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+  /ClientAuthentication.API/api/v1/auth/token:
+    post:
+      tags:
+      - api-market
+      summary: |-
+        Genera el token para los demás servicios (va en `Authorization: Bearer`).
+        Dura 1 hora; al vencer, los servicios responden 401 y hay que pedir otro.
+      operationId: token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PedidoToken'
+        required: true
+      responses:
+        '200':
+          description: '`success: true` y el token en `message`; `success: false` si las credenciales no sirven'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+        '400':
+          description: Cuerpo mal formado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+  /QRSimple.API/api/v1/main/CancelQRByIdAsync:
+    post:
+      tags:
+      - api-market
+      summary: Anula un QR que nadie pagó. Anular uno ya anulado no es error.
+      operationId: anular_qr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PedidoQrId'
+        required: true
+      responses:
+        '200':
+          description: '`success: true`, o `success: false` si ya se pagó, venció o no existe'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+        '400':
+          description: Cuerpo mal formado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+        '401':
+          description: Token inválido o vencido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+      security:
+      - tokenMarket: []
+  /QRSimple.API/api/v1/main/getQRStatusAsync:
+    post:
+      tags:
+      - api-market
+      summary: |-
+        Estado de un QR. Úsalo para confirmar un pago antes de entregar lo vendido
+        (la notificación no va firmada en el BNB).
+      operationId: estado_qr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PedidoQrId'
+        required: true
+      responses:
+        '200':
+          description: 'Estado del QR, o `success: false` si no existe'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoQr'
+        '400':
+          description: Cuerpo mal formado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+        '401':
+          description: Token inválido o vencido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+      security:
+      - tokenMarket: []
+  /QRSimple.API/api/v1/main/getQRWithImageAsync:
+    post:
+      tags:
+      - api-market
+      summary: |-
+        Genera un QR de cobro y devuelve su imagen (PNG en base64). Cuando alguien
+        lo paga, el banco llama a tu URL de notificación (`ReceiveNotification`).
+      operationId: generar_qr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PedidoQr'
+        required: true
+      responses:
+        '200':
+          description: 'QR creado, o `success: false` con el motivo'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QrGenerado'
+        '400':
+          description: Cuerpo mal formado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+        '401':
+          description: Token inválido o vencido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+      security:
+      - tokenMarket: []
+  /QRSimple.API/api/v1/main/getQRbyGenerationDateAsync:
+    post:
+      tags:
+      - api-market
+      summary: |-
+        QR generados por tu cuenta en un día (hora de Bolivia), con su estado y el
+        resultado de la notificación de pago.
+      operationId: qrs_por_fecha
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PedidoFecha'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QrsDelDia'
+        '400':
+          description: Cuerpo mal formado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+        '401':
+          description: Token inválido o vencido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Respuesta'
+      security:
+      - tokenMarket: []
+  /api/v1/app/api-keys:
+    get:
+      tags:
+      - app
+      summary: Mis claves de API (sin la clave en sí, que se muestra una sola vez).
+      operationId: listar_claves
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClaveApi'
+      security:
+      - sesion: []
+    post:
+      tags:
+      - app
+      summary: Crea una clave de API. La clave y el secreto de avisos se muestran solo aquí.
+      operationId: crear_clave
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevaClave'
+        required: true
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaveCreada'
+        '409':
+          description: API_KEY_LIMIT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/api-keys/{id}:
+    delete:
+      tags:
+      - app
+      summary: 'Revoca una clave: deja de servir de inmediato.'
+      operationId: revocar_clave
+      parameters:
+      - name: id
+        in: path
+        description: Id de la clave
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: ''
+        '404':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+    patch:
+      tags:
+      - app
+      summary: Cambia (o quita) la URL de avisos de una clave.
+      operationId: cambiar_webhook
+      parameters:
+      - name: id
+        in: path
+        description: Id de la clave
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambiarWebhook'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaveApi'
+        '404':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/customers:
+    post:
+      tags:
+      - app
+      summary: Abre una cuenta con el saldo inicial simulado y deja la sesión iniciada.
+      operationId: abrir_cuenta
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AbrirCuenta'
+        required: true
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionCreada'
+        '400':
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '409':
+          description: CI_ALREADY_REGISTERED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+  /api/v1/app/deposits:
+    post:
+      tags:
+      - app
+      summary: 'Depósito simulado: suma saldo a la cuenta.'
+      operationId: depositar
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Deposito'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cuenta'
+        '400':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/me:
+    get:
+      tags:
+      - app
+      summary: Nombre, C.I., número de cuenta y saldo.
+      operationId: perfil
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Perfil'
+        '401':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/movements:
+    get:
+      tags:
+      - app
+      summary: Movimientos de la cuenta, del más reciente al más antiguo.
+      operationId: movimientos
+      parameters:
+      - name: limit
+        in: query
+        description: Cuántos (1 a 100, por defecto 20).
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: before
+        in: query
+        description: '`id` del último movimiento ya mostrado (para la página siguiente).'
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Movimiento'
+        '401':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/payments/{bankReference}/refunds:
+    post:
+      tags:
+      - app
+      summary: Devuelve un pago que recibí (completo).
+      operationId: devolver
+      parameters:
+      - name: bankReference
+        in: path
+        description: Referencia del pago, ej. VM-20261118-000042
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevaDevolucion'
+        required: true
+      responses:
+        '200':
+          description: Ya estaba devuelto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Devolucion'
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Devolucion'
+        '404':
+          description: PAYMENT_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '409':
+          description: INSUFFICIENT_FUNDS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/qr:
+    get:
+      tags:
+      - app
+      summary: Mis cobros, del más reciente al más antiguo.
+      operationId: listar_cobros
+      parameters:
+      - name: limit
+        in: query
+        description: Cuántos (1 a 100, por defecto 20).
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Cobro'
+      security:
+      - sesion: []
+    post:
+      tags:
+      - app
+      summary: '«Cobrar»: genera un QR dinámico que cobra a la cuenta de quien tiene la sesión.'
+      operationId: crear_cobro
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevoCobroApp'
+        required: true
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cobro'
+        '400':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/qr-codes/{code}:
+    get:
+      tags:
+      - app
+      summary: Busca un cobro activo por su código corto (`7K2Q-M9XD`), para pagar sin cámara.
+      operationId: cobro_por_codigo
+      parameters:
+      - name: code
+        in: path
+        description: Código del cobro, con o sin guion
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoPublico'
+        '404':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/qr/{id}:
+    get:
+      tags:
+      - app
+      summary: Un cobro mío, con el pagador si ya me pagaron.
+      operationId: cobro
+      parameters:
+      - name: id
+        in: path
+        description: Id del cobro
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cobro'
+        '404':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/qr/{id}/cancel:
+    post:
+      tags:
+      - app
+      summary: Anula un cobro mío que nadie pagó.
+      operationId: anular
+      parameters:
+      - name: id
+        in: path
+        description: Id del cobro
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cobro'
+        '409':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/qr/{id}/payments:
+    post:
+      tags:
+      - app
+      summary: Paga un cobro QR. Si esta cuenta ya lo pagó, responde 200 con el mismo recibo.
+      operationId: pagar
+      parameters:
+      - name: id
+        in: path
+        description: Id del cobro
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PagarCobro'
+        required: true
+      responses:
+        '200':
+          description: Ya lo habías pagado tú
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recibo'
+        '201':
+          description: Pagado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recibo'
+        '401':
+          description: INVALID_PIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '404':
+          description: QR_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '409':
+          description: INSUFFICIENT_FUNDS, QR_EXPIRED, QR_CANCELLED, QR_ALREADY_PAID o CANNOT_PAY_OWN_QR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '423':
+          description: ACCOUNT_LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/sessions:
+    post:
+      tags:
+      - app
+      summary: Entrar con C.I. y PIN. Tras 5 PIN incorrectos seguidos, la cuenta se bloquea 5 min.
+      operationId: iniciar_sesion
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IniciarSesion'
+        required: true
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionCreada'
+        '401':
+          description: INVALID_CREDENTIALS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '423':
+          description: ACCOUNT_LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+  /api/v1/app/sessions/current:
+    delete:
+      tags:
+      - app
+      summary: Salir.
+      operationId: cerrar_sesion
+      responses:
+        '204':
+          description: ''
+        '401':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/app/webhook-deliveries:
+    get:
+      tags:
+      - app
+      summary: Avisos enviados a los webhooks de mis claves.
+      operationId: listar_avisos
+      parameters:
+      - name: limit
+        in: query
+        description: Cuántos (1 a 100, por defecto 20).
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Aviso'
+      security:
+      - sesion: []
+  /api/v1/app/webhook-deliveries/{id}/redeliver:
+    post:
+      tags:
+      - app
+      summary: Vuelve a enviar un aviso.
+      operationId: reenviar_aviso
+      parameters:
+      - name: id
+        in: path
+        description: Id del aviso
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Aviso'
+        '404':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - sesion: []
+  /api/v1/config:
+    get:
+      tags:
+      - operación
+      summary: Datos que usa la web app al arrancar.
+      operationId: configuracion
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Configuracion'
+  /api/v1/payments/{bankReference}/refunds:
+    post:
+      tags:
+      - integración
+      summary: Devuelve un pago completo a quien pagó. Repetirla responde la misma devolución.
+      operationId: devolver
+      parameters:
+      - name: bankReference
+        in: path
+        description: Referencia del pago, ej. VM-20261118-000042
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevaDevolucion'
+        required: true
+      responses:
+        '200':
+          description: Ya estaba devuelto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Devolucion'
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Devolucion'
+        '404':
+          description: PAYMENT_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '409':
+          description: INSUFFICIENT_FUNDS (tu cuenta no tiene saldo para devolver)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - apiKey: []
+  /api/v1/public/qr/{id}:
+    get:
+      tags:
+      - público
+      summary: Estado de un cobro (para que el front del comercio sepa si ya le pagaron).
+      operationId: estado
+      parameters:
+      - name: id
+        in: path
+        description: Id del cobro
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoPublico'
+        '404':
+          description: QR_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+  /api/v1/public/qr/{id}/events:
+    get:
+      tags:
+      - público
+      summary: |-
+        Server-Sent Events: manda el estado actual y luego cada cambio (evento
+        `status`, mismo JSON que el estado público). Cierra cuando el cobro queda
+        PAID, EXPIRED, CANCELLED o REFUNDED. En el navegador:
+        `new EventSource(url).addEventListener('status', e => …)`.
+      operationId: eventos
+      parameters:
+      - name: id
+        in: path
+        description: Id del cobro
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Eventos `status` con un EstadoPublico en `data`
+          content:
+            text/event-stream: {}
+        '404':
+          description: QR_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+  /api/v1/public/qr/{id}/image.png:
+    get:
+      tags:
+      - público
+      summary: QR en PNG (320 px o más), listo para `<img src>`.
+      operationId: imagen_png
+      parameters:
+      - name: id
+        in: path
+        description: Id del cobro
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Imagen PNG del QR
+          content:
+            image/png: {}
+        '404':
+          description: QR_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+  /api/v1/public/qr/{id}/image.svg:
+    get:
+      tags:
+      - público
+      summary: QR en SVG.
+      operationId: imagen_svg
+      parameters:
+      - name: id
+        in: path
+        description: Id del cobro
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Imagen SVG del QR
+          content:
+            image/svg+xml: {}
+        '404':
+          description: QR_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+  /api/v1/qr:
+    get:
+      tags:
+      - integración
+      summary: |-
+        Lista tus cobros (todos los de la cuenta dueña de la clave), del más reciente
+        al más antiguo.
+      operationId: listar_cobros
+      parameters:
+      - name: merchantReference
+        in: query
+        description: Filtra por tu referencia.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Cuántos (1 a 100, por defecto 20).
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Cobro'
+        '401':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - apiKey: []
+    post:
+      tags:
+      - integración
+      summary: |-
+        Crea un cobro QR dinámico. La respuesta trae el texto del QR (`payload`), la
+        imagen en base64 y los enlaces públicos para mostrarlo y seguir su estado.
+      operationId: crear_cobro
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevoCobro'
+        required: true
+      responses:
+        '200':
+          description: Ya existía con esa merchantReference y los mismos datos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cobro'
+        '201':
+          description: Cobro creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cobro'
+        '400':
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '401':
+          description: UNAUTHENTICATED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '409':
+          description: MERCHANT_REFERENCE_CONFLICT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - apiKey: []
+  /api/v1/qr/{id}:
+    get:
+      tags:
+      - integración
+      summary: 'Consulta un cobro: estado y, si ya se pagó, quién pagó (C.I., nombre, cuenta).'
+      operationId: cobro
+      parameters:
+      - name: id
+        in: path
+        description: Id del cobro
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cobro'
+        '401':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '404':
+          description: QR_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - apiKey: []
+  /api/v1/qr/{id}/cancel:
+    post:
+      tags:
+      - integración
+      summary: Anula un cobro que nadie pagó. Anular uno ya anulado no es error.
+      operationId: anular
+      parameters:
+      - name: id
+        in: path
+        description: Id del cobro
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cobro'
+        '404':
+          description: QR_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '409':
+          description: QR_ALREADY_PAID o QR_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - apiKey: []
+  /api/v1/sandbox/qr/{id}/pay:
+    post:
+      tags:
+      - sandbox
+      summary: |-
+        Sandbox: paga un cobro sin la app ni PIN, desde la cuenta de `payerCi`. Mismas
+        reglas y mismo aviso que un pago real. Solo con `BANK_SANDBOX=true`. Acepta
+        `X-Api-Key` o el token de la API Market. No existe en el BNB.
+      operationId: pagar_sandbox
+      parameters:
+      - name: id
+        in: path
+        description: Id del cobro (UUID) o `qrId` numérico de la API Market
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PagoSandbox'
+        required: true
+      responses:
+        '200':
+          description: Esa cuenta ya lo había pagado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recibo'
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recibo'
+        '404':
+          description: NOT_FOUND (sandbox apagado) o QR_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+        '409':
+          description: INSUFFICIENT_FUNDS, QR_EXPIRED, QR_CANCELLED, QR_ALREADY_PAID o CANNOT_PAY_OWN_QR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - apiKey: []
+      - tokenMarket: []
+  /api/v1/webhook-deliveries:
+    get:
+      tags:
+      - integración
+      summary: Avisos enviados al webhook de esta clave, con intentos y última respuesta.
+      operationId: listar_avisos
+      parameters:
+      - name: limit
+        in: query
+        description: Cuántos (1 a 100, por defecto 20).
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Aviso'
+      security:
+      - apiKey: []
+  /api/v1/webhook-deliveries/{id}/redeliver:
+    post:
+      tags:
+      - integración
+      summary: |-
+        Vuelve a enviar un aviso (mismo id y cuerpo): sirve para probar que tu
+        receptor es idempotente.
+      operationId: reenviar_aviso
+      parameters:
+      - name: id
+        in: path
+        description: Id del aviso
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '202':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Aviso'
+        '404':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuerpoError'
+      security:
+      - apiKey: []
+  /health:
+    get:
+      tags:
+      - operación
+      summary: Estado del servicio y de su base (lo usa el healthcheck de Docker).
+      operationId: salud
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salud'
+        '503':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salud'
+components:
+  schemas:
+    AbrirCuenta:
+      type: object
+      required:
+      - ci
+      - fullName
+      - pin
+      properties:
+        ci:
+          type: string
+          example: '7000005'
+        ciComplement:
+          type:
+          - string
+          - 'null'
+          example: 1A
+        fullName:
+          type: string
+          example: Ana Torrez
+        pin:
+          type: string
+          description: 6 dígitos.
+          example: '123456'
+    Aviso:
+      type: object
+      required:
+      - id
+      - qrId
+      - eventType
+      - format
+      - url
+      - status
+      - attempts
+      - createdAt
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        deliveredAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        eventType:
+          type: string
+          example: qr.paid
+        format:
+          type: string
+          description: '`VALMED` (evento firmado) o `API_MARKET` (notificación con el formato del BNB).'
+          example: VALMED
+        id:
+          type: string
+          format: uuid
+        lastError:
+          type:
+          - string
+          - 'null'
+        lastResponse:
+          type:
+          - string
+          - 'null'
+          description: Inicio de lo que respondió tu servidor (hasta 500 caracteres).
+          example: '{"success": true, "message": "OK"}'
+        lastStatusCode:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        nextAttemptAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        qrId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: '`PENDING`, `DELIVERED` o `FAILED`.'
+          example: DELIVERED
+        url:
+          type: string
+    CambiarWebhook:
+      type: object
+      properties:
+        webhookUrl:
+          type:
+          - string
+          - 'null'
+          description: '`null` o vacío para dejar de recibir avisos.'
+    ClaveApi:
+      type: object
+      required:
+      - id
+      - name
+      - prefix
+      - accountId
+      - createdAt
+      properties:
+        accountId:
+          type: string
+          description: '`accountId` de la API Market (público).'
+          example: s9CG8FE7Id75ef2jeX9bUA==
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: SmartFila Ventas
+        prefix:
+          type: string
+          description: Primeros caracteres de la clave, para reconocerla.
+          example: vm_test_Xy12ab
+        revokedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        webhookUrl:
+          type:
+          - string
+          - 'null'
+    ClaveCreada:
+      allOf:
+      - $ref: '#/components/schemas/ClaveApi'
+      - type: object
+        required:
+        - apiKey
+        - authorizationId
+        - webhookSecret
+        properties:
+          apiKey:
+            type: string
+            description: Va en la cabecera `X-Api-Key`.
+            example: vm_test_Xy12ab…
+          authorizationId:
+            type: string
+            description: |-
+              `authorizationId` inicial de la API Market: es la misma clave. Se puede
+              cambiar con `UpdateCredentials` sin afectar a `X-Api-Key`.
+            example: vm_test_Xy12ab…
+          webhookSecret:
+            type: string
+            description: Secreto para verificar la firma de los avisos.
+            example: whsec_…
+      description: 'Se muestra una sola vez: el banco no puede volver a mostrar la clave.'
+    Cobro:
+      type: object
+      description: Cobro QR visto por quien cobra (dueño de la cuenta o su clave de API).
+      required:
+      - id
+      - number
+      - code
+      - status
+      - amount
+      - currency
+      - description
+      - receiver
+      - createdAt
+      - expiresAt
+      - payload
+      - links
+      properties:
+        amount:
+          type: string
+          example: '350.00'
+        cancelledAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        code:
+          type: string
+          description: Código para pagar sin cámara.
+          example: 7K2Q-M9XD
+        createdAt:
+          type: string
+          format: date-time
+        currency:
+          type: string
+          example: BOB
+        description:
+          type: string
+          example: Entrada Guadalupe · Tramo A-014
+        expiresAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        imagePngBase64:
+          type:
+          - string
+          - 'null'
+          description: 'Solo en la respuesta de creación: PNG del QR en base64.'
+        links:
+          $ref: '#/components/schemas/Enlaces'
+        merchantReference:
+          type:
+          - string
+          - 'null'
+          description: Referencia del integrador (única por cuenta); `null` en cobros hechos desde la app.
+          example: orden-6f1c2a9e-intento-1
+        metadata:
+          type:
+          - object
+          - 'null'
+          description: Lo que el integrador mandó al crear el cobro, devuelto tal cual.
+        number:
+          type: integer
+          format: int64
+          description: 'Id numérico: el `id`/`qrId` de la API Market.'
+          example: 51
+        paidAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        payload:
+          type: string
+          description: 'Texto que va dentro del QR: una URL que abre la app del banco.'
+          example: http://localhost:8086/?p=0b8e4c3a-5d6f-4a1b-9c2d-7e8f9a0b1c2d
+        payment:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/Pago'
+            description: '`null` hasta que alguien paga.'
+        receiver:
+          $ref: '#/components/schemas/Titular'
+        refundedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        status:
+          $ref: '#/components/schemas/EstadoCobro'
+    Configuracion:
+      type: object
+      required:
+      - bankName
+      - publicUrl
+      - sandbox
+      - demoAccounts
+      - initialBalance
+      - currency
+      properties:
+        bankName:
+          type: string
+          example: Banco ValMed
+        currency:
+          type: string
+          example: BOB
+        demoAccounts:
+          type: boolean
+          description: Hay clientes demo (7000001…7000004, PIN 123456).
+        initialBalance:
+          type: string
+          example: '1000.00'
+        publicUrl:
+          type: string
+          description: URL pública que usa el banco para armar los QR.
+          example: http://localhost:8086
+        sandbox:
+          type: boolean
+    Cuenta:
+      type: object
+      required:
+      - number
+      - balance
+      - currency
+      properties:
+        balance:
+          type: string
+          example: '2000.00'
+        currency:
+          type: string
+          example: BOB
+        number:
+          type: string
+          example: 1001-000001
+    CuerpoError:
+      type: object
+      required:
+      - code
+      - message
+      - details
+      - traceId
+      properties:
+        code:
+          type: string
+          example: INSUFFICIENT_FUNDS
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/Detalle'
+        message:
+          type: string
+          example: Saldo insuficiente
+        traceId:
+          type: string
+          description: Igual a la cabecera X-Correlation-Id, para buscar la petición en los logs.
+          example: 4bf92f35-77b3-4da6-a3ce-929d0e0e4736
+    Deposito:
+      type: object
+      required:
+      - amount
+      properties:
+        amount:
+          type: string
+          description: Máximo 5000 por operación.
+          example: '500.00'
+    Detalle:
+      type: object
+      required:
+      - field
+      - issue
+      properties:
+        field:
+          type: string
+          example: amount
+        issue:
+          type: string
+          example: máximo 2 decimales
+    DetalleQr:
+      type: object
+      required:
+      - id
+      - amount
+      - currency
+      - generationDate
+      - expirationDate
+      - statusId
+      - transactionDate
+      - gloss
+      - destinationAccountNumber
+      - notificationSuccess
+      properties:
+        amount:
+          type: number
+          format: double
+          example: 20
+        currency:
+          type: string
+          example: BOB
+        destinationAccountNumber:
+          type: integer
+          format: int64
+          example: 1
+        expirationDate:
+          type: string
+          example: 2026-11-19T00:00:00
+        generationDate:
+          type: string
+          example: 2026-11-18T19:44:01
+        gloss:
+          type: string
+          example: Entrada A-014
+        id:
+          type: integer
+          format: int64
+          example: 49
+        notificationResponse:
+          type:
+          - string
+          - 'null'
+          description: Lo que respondió tu servidor a la notificación.
+          example: '{"success":true,"message":"OK"}'
+        notificationSuccess:
+          type: boolean
+          description: 'Si tu servidor respondió `{"success": true}` a la notificación de pago.'
+        sourceBank:
+          type:
+          - string
+          - 'null'
+          description: Banco desde el que se pagó; `null` si no se usó.
+          example: BANCO VALMED
+        statusId:
+          type: integer
+          format: int32
+          description: '1 = no usado, 2 = usado, 3 = expirado, 4 = con error (aquí: anulado).'
+          example: 1
+        transactionDate:
+          type: string
+          description: Cuándo se pagó; `0001-01-01T00:00:00` si no se usó.
+          example: 0001-01-01T00:00:00
+        voucherId:
+          type:
+          - string
+          - 'null'
+          example: 3JAO702813
+    Devolucion:
+      type: object
+      required:
+      - id
+      - bankReference
+      - amount
+      - currency
+      - reason
+      - createdAt
+      properties:
+        amount:
+          type: string
+          example: '350.00'
+        bankReference:
+          type: string
+          example: VM-20261118-000042
+        createdAt:
+          type: string
+          format: date-time
+        currency:
+          type: string
+          example: BOB
+        id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          example: PAGADOR_DISTINTO
+    Enlaces:
+      type: object
+      required:
+      - imagePng
+      - imageSvg
+      - status
+      - events
+      properties:
+        events:
+          type: string
+          description: 'Server-Sent Events: avisa en vivo cuando el cobro cambia de estado.'
+        imagePng:
+          type: string
+          description: PNG del QR (público, sirve para `<img src>`).
+        imageSvg:
+          type: string
+          description: SVG del QR (público).
+        status:
+          type: string
+          description: Estado público del cobro (sin datos del pagador).
+    EstadoCobro:
+      type: string
+      description: 'Estado de un cobro QR. `EXPIRED` se calcula: es `ACTIVE` con `expiresAt` vencido.'
+      enum:
+      - ACTIVE
+      - PAID
+      - EXPIRED
+      - CANCELLED
+      - REFUNDED
+    EstadoPublico:
+      type: object
+      description: Lo que cualquiera puede ver de un cobro conociendo su id (sin datos del pagador).
+      required:
+      - id
+      - code
+      - status
+      - amount
+      - currency
+      - description
+      - receiverName
+      - expiresAt
+      properties:
+        amount:
+          type: string
+          example: '350.00'
+        code:
+          type: string
+          example: 7K2Q-M9XD
+        currency:
+          type: string
+          example: BOB
+        description:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        paidAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        receiverName:
+          type: string
+          example: Comercio Demo
+        status:
+          $ref: '#/components/schemas/EstadoCobro'
+    EstadoQr:
+      type: object
+      required:
+      - id
+      - statusId
+      - expirationDate
+      - success
+      properties:
+        expirationDate:
+          type: string
+          description: Hora de Bolivia, sin zona.
+          example: 2026-11-19T00:00:00
+        id:
+          type: integer
+          format: int64
+          example: 51
+        message:
+          type:
+          - string
+          - 'null'
+        statusId:
+          type: integer
+          format: int32
+          description: '1 = no usado, 2 = usado (pagado), 3 = expirado, 4 = con error (aquí: anulado).'
+          example: 2
+        success:
+          type: boolean
+        voucherId:
+          type:
+          - string
+          - 'null'
+          description: Código de transacción si se pagó; si no, `null`.
+          example: 3JAO702813
+    EventoAviso:
+      type: object
+      description: Cuerpo de un aviso firmado.
+      required:
+      - id
+      - type
+      - createdAt
+      - data
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        data:
+          $ref: '#/components/schemas/Cobro'
+        id:
+          type: string
+          format: uuid
+          description: Igual a la cabecera `X-ValMed-Event-Id`; se repite en los reintentos.
+        type:
+          type: string
+          description: '`qr.paid` o `qr.refunded`.'
+          example: qr.paid
+    IniciarSesion:
+      type: object
+      required:
+      - ci
+      - pin
+      properties:
+        ci:
+          type: string
+          example: '7000001'
+        ciComplement:
+          type:
+          - string
+          - 'null'
+        pin:
+          type: string
+          example: '123456'
+    Movimiento:
+      type: object
+      required:
+      - id
+      - kind
+      - amount
+      - balanceAfter
+      - description
+      - createdAt
+      properties:
+        amount:
+          type: string
+          description: 'Con signo: negativo si salió dinero.'
+          example: '-350.00'
+        balanceAfter:
+          type: string
+          example: '1650.00'
+        bankReference:
+          type:
+          - string
+          - 'null'
+          example: VM-20261118-000042
+        counterparty:
+          type:
+          - string
+          - 'null'
+          example: Comercio Demo
+        createdAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+          description: '`APERTURA`, `DEPOSITO`, `PAGO_QR`, `COBRO_QR` o `DEVOLUCION`.'
+          example: PAGO_QR
+    NotificacionMarket:
+      type: object
+      description: |-
+        Notificación de pago con el formato del BNB (`POST ReceiveNotification`). Se
+        manda para los QR creados con la API Market. No trae monto ni C.I.: con
+        `QRId` buscas tu orden y confirmas con `getQRStatusAsync`.
+      required:
+      - QRId
+      - Gloss
+      - sourceBankId
+      - originName
+      - VoucherId
+      - TransactionDateTime
+      - additionalData
+      properties:
+        Gloss:
+          type: string
+          description: El `gloss` con el que se creó el QR.
+          example: Entrada A-014
+        QRId:
+          type: string
+          description: El `id` que devolvió `getQRWithImageAsync`, como texto.
+          example: '76'
+        TransactionDateTime:
+          type: string
+          description: '`dd/MM/yyyy HH:mm:ss`, hora de Bolivia.'
+          example: 18/11/2026 17:30:15
+        VoucherId:
+          type: string
+          description: Código de transacción de 10 caracteres.
+          example: 1J9F121212
+        additionalData:
+          type: string
+          description: El `additionalData` con el que se creó el QR (`""` si no se mandó).
+          example: orden-6f1c2a9e
+        originName:
+          type: string
+          description: Titular de la cuenta que pagó, en mayúsculas.
+          example: ROSA QUISPE
+        sourceBankId:
+          type: integer
+          format: int32
+          description: Banco desde el que se pagó (en el simulador, siempre 1 = Banco ValMed).
+          example: 1
+    NuevaClave:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          example: SmartFila Ventas
+        webhookUrl:
+          type:
+          - string
+          - 'null'
+          description: 'Opcional: adónde mandar los avisos firmados.'
+          example: http://sales:8080/api/v1/ventas/pagos/notificaciones
+    NuevaDevolucion:
+      type: object
+      properties:
+        reason:
+          type:
+          - string
+          - 'null'
+          description: '`PAGADOR_DISTINTO`, `PAGO_TARDIO`, `MONTO_DISTINTO` o `DEVOLUCION` (por defecto).'
+          example: PAGADOR_DISTINTO
+    NuevoCobro:
+      type: object
+      required:
+      - amount
+      - description
+      properties:
+        amount:
+          type: string
+          description: De 0.01 a 100000, máximo 2 decimales. Mejor como string.
+          example: '350.00'
+        currency:
+          type:
+          - string
+          - 'null'
+          description: Solo `BOB` (opcional).
+          example: BOB
+        description:
+          type: string
+          description: Lo que verá quien paga (1 a 140 caracteres).
+          example: Entrada Guadalupe · Tramo A-014
+        expiresAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Fecha exacta de vencimiento (entre 30 s y 24 h desde ahora).
+        expiresInSeconds:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          description: De 30 a 86400 s. Por defecto 600. No se puede usar junto con `expiresAt`.
+          example: 600
+        merchantReference:
+          type:
+          - string
+          - 'null'
+          description: |-
+            Tu referencia (única por cuenta). Repetirla con los mismos datos devuelve
+            el cobro existente; con otros datos, 409.
+          example: orden-6f1c2a9e-intento-1
+        metadata:
+          type:
+          - object
+          - 'null'
+          description: Objeto JSON libre (hasta 2000 bytes); vuelve tal cual en consultas y avisos.
+    NuevoCobroApp:
+      type: object
+      required:
+      - amount
+      - description
+      properties:
+        amount:
+          type: string
+          example: '35.50'
+        description:
+          type: string
+          example: Almuerzo
+        expiresInSeconds:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          description: De 30 a 86400; por defecto 600 (10 min).
+          example: 600
+    Pagador:
+      type: object
+      required:
+      - ci
+      - name
+      - account
+      properties:
+        account:
+          type: string
+          example: '****0001'
+        ci:
+          type: string
+          description: C.I. completo del pagador (solo lo ve quien cobró).
+          example: '7000001'
+        name:
+          type: string
+          example: Rosa Quispe
+    PagarCobro:
+      type: object
+      required:
+      - pin
+      properties:
+        pin:
+          type: string
+          description: Se pide otra vez al confirmar, como en un banco real.
+          example: '123456'
+    Pago:
+      type: object
+      required:
+      - bankReference
+      - voucherId
+      - amount
+      - currency
+      - paidAt
+      - payer
+      properties:
+        amount:
+          type: string
+          example: '350.00'
+        bankReference:
+          type: string
+          description: Referencia única del pago en el banco; sirve para devolverlo.
+          example: VM-20261118-000042
+        currency:
+          type: string
+          example: BOB
+        paidAt:
+          type: string
+          format: date-time
+        payer:
+          $ref: '#/components/schemas/Pagador'
+        refundReason:
+          type:
+          - string
+          - 'null'
+          example: PAGADOR_DISTINTO
+        refundedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        voucherId:
+          type: string
+          description: Código de transacción de 10 caracteres (el `VoucherId` de la API Market).
+          example: 3JAO702813
+    PagoSandbox:
+      type: object
+      required:
+      - payerCi
+      properties:
+        payerCi:
+          type: string
+          description: |-
+            C.I. de quien paga (`1234567` o `1234567-1A`). Si no tiene cuenta, se le
+            abre una con el saldo inicial y PIN 123456.
+          example: '7000001'
+    PedidoCredenciales:
+      type: object
+      required:
+      - AccountId
+      - actualAuthorizationId
+      - newAuthorizationId
+      properties:
+        AccountId:
+          type: string
+          example: s9CG8FE7Id75ef2jeX9bUA==
+        actualAuthorizationId:
+          type: string
+          example: vm_test_Xy12ab…
+        newAuthorizationId:
+          type: string
+          description: |-
+            15 caracteres o más, con al menos una letra, un número y un carácter
+            especial (`+ - / * $ < > ! ¡ # | =`).
+          example: Naciona0123456*
+    PedidoFecha:
+      type: object
+      required:
+      - generationDate
+      properties:
+        generationDate:
+          type: string
+          description: Día de creación (`AAAA-MM-DD`, hora de Bolivia).
+          example: 2026-11-18
+    PedidoQr:
+      type: object
+      required:
+      - currency
+      - gloss
+      - amount
+      - singleUse
+      - expirationDate
+      properties:
+        additionalData:
+          type:
+          - string
+          - 'null'
+          description: Opcional, hasta 500 caracteres. Vuelve en la notificación.
+          example: orden-6f1c2a9e
+        amount:
+          type: number
+          format: double
+          description: Monto (número o texto), de 0.01 a 100000 con 2 decimales como máximo.
+          example: 350
+        currency:
+          type: string
+          description: Solo `BOB`.
+          example: BOB
+        destinationAccountId:
+          type:
+          - string
+          - 'null'
+          description: 'Opcional: `1` (cuenta en bolivianos, la única que existe).'
+          example: '1'
+        expirationDate:
+          type: string
+          description: |-
+            Último día en que se puede pagar (`AAAA-MM-DD`, hora de Bolivia), desde
+            hoy hasta 365 días. Vence a las 00:00 del día siguiente.
+          example: 2026-11-18
+        gloss:
+          type: string
+          description: Descripción del pago (1 a 140 caracteres). Vuelve en la notificación como `Gloss`.
+          example: Entrada A-014
+        singleUse:
+          type: boolean
+          description: Solo `true` (QR de un solo pago).
+          example: true
+    PedidoQrId:
+      type: object
+      required:
+      - qrId
+      properties:
+        qrId:
+          type: integer
+          format: int64
+          description: El `id` que devolvió `getQRWithImageAsync` (número o texto).
+          example: 51
+    PedidoToken:
+      type: object
+      required:
+      - accountId
+      - authorizationId
+      properties:
+        accountId:
+          type: string
+          description: Identificador de la clave (público). Está en la app, «Desarrolladores».
+          example: s9CG8FE7Id75ef2jeX9bUA==
+        authorizationId:
+          type: string
+          description: 'Secreto: al crear la clave es la misma clave de API (`vm_test_…`).'
+          example: vm_test_Xy12ab…
+    Perfil:
+      type: object
+      required:
+      - customerId
+      - fullName
+      - ci
+      - account
+      properties:
+        account:
+          $ref: '#/components/schemas/Cuenta'
+        ci:
+          type: string
+          example: '7000001'
+        customerId:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+          example: Rosa Quispe
+    QrGenerado:
+      type: object
+      required:
+      - id
+      - qr
+      - success
+      properties:
+        id:
+          type: string
+          description: Id del QR, como texto (así lo devuelve el BNB).
+          example: '51'
+        message:
+          type:
+          - string
+          - 'null'
+        qr:
+          type: string
+          description: 'Imagen PNG del QR en base64: `<img src="data:image/png;base64,…">`.'
+        success:
+          type: boolean
+    QrsDelDia:
+      type: object
+      required:
+      - dTOqrDetails
+      - success
+      properties:
+        dTOqrDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetalleQr'
+          description: Así se llama en el BNB (con esa mezcla de mayúsculas).
+        message:
+          type:
+          - string
+          - 'null'
+        success:
+          type: boolean
+    Recibo:
+      type: object
+      description: Comprobante que recibe quien paga.
+      required:
+      - bankReference
+      - voucherId
+      - qrId
+      - amount
+      - currency
+      - description
+      - receiver
+      - paidAt
+      - balanceAfter
+      properties:
+        amount:
+          type: string
+          example: '350.00'
+        balanceAfter:
+          type: string
+          description: Saldo de quien pagó después del pago.
+          example: '1650.00'
+        bankReference:
+          type: string
+          example: VM-20261118-000042
+        currency:
+          type: string
+          example: BOB
+        description:
+          type: string
+        paidAt:
+          type: string
+          format: date-time
+        qrId:
+          type: string
+          format: uuid
+        receiver:
+          $ref: '#/components/schemas/Titular'
+        voucherId:
+          type: string
+          example: 3JAO702813
+    Respuesta:
+      type: object
+      description: |-
+        Respuesta base del BNB: `success` dice si la operación se hizo; si no,
+        `message` explica por qué.
+      required:
+      - success
+      properties:
+        message:
+          type:
+          - string
+          - 'null'
+          description: Token (en `auth/token`), motivo del rechazo o `null`.
+          example: QR no encontrado
+        success:
+          type: boolean
+    Salud:
+      type: object
+      required:
+      - status
+      - database
+      properties:
+        database:
+          type: string
+          example: UP
+        status:
+          type: string
+          example: UP
+    SesionCreada:
+      type: object
+      required:
+      - token
+      - expiresAt
+      - profile
+      properties:
+        expiresAt:
+          type: string
+          format: date-time
+        profile:
+          $ref: '#/components/schemas/Perfil'
+        token:
+          type: string
+          description: 'Token opaco para `Authorization: Bearer`. Vence tras 15 min sin uso o 2 h en total.'
+    Titular:
+      type: object
+      description: Dueño de una cuenta, con el número enmascarado.
+      required:
+      - name
+      - account
+      properties:
+        account:
+          type: string
+          example: '****0005'
+        name:
+          type: string
+          example: Comercio Demo
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: Clave creada en la app, sección Desarrolladores
+    sesion:
+      type: http
+      scheme: bearer
+      description: Token de POST /api/v1/app/sessions
+    tokenMarket:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token de POST /ClientAuthentication.API/api/v1/auth/token (dura 1 h)
+tags:
+- name: api-market
+  description: 'Compatible con la API Market (Pago QR) del BNB. Token en `Authorization: Bearer`. Mira siempre `success`: un rechazo responde HTTP 200 con `success: false`. Al pagarse un QR, el banco hace POST a tu URL de notificación con el esquema `NotificacionMarket`.'
+- name: integración
+  description: 'Para el backend de otro sistema: crear y gestionar cobros QR (X-Api-Key)'
+- name: público
+  description: Estado, imagen y eventos en vivo de un cobro, sin credenciales
+- name: sandbox
+  description: Pagar por API, sin la app (solo con BANK_SANDBOX=true)
+- name: app
+  description: 'Web app del banco: cuentas, pagos, cobros y claves (sesión Bearer)'
+- name: operación
+  description: Configuración y estado del servicio

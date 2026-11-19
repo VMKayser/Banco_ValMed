@@ -1,0 +1,56 @@
+# Banco ValMed por sí solo (no depende de SmartFila).
+#
+#   cp .env.example .env      # y cambia las claves
+#   docker compose up -d --build
+#
+# Web app y API: http://localhost:8086 · Swagger: http://localhost:8086/docs
+#
+# La red se llama `banco-valmed` (nombre fijo): otro proyecto de Compose puede
+# unirse a ella como red externa y llamar al banco en http://banco:8080.
+
+name: banco-valmed
+
+services:
+  banco-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: banco_valmed
+      POSTGRES_USER: banco
+      POSTGRES_PASSWORD: ${BANK_DB_PASSWORD:?define BANK_DB_PASSWORD en .env}
+    volumes:
+      - banco-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banco -d banco_valmed"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  banco:
+    build: .
+    image: banco-valmed:dev
+    environment:
+      DATABASE_URL: postgres://banco:${BANK_DB_PASSWORD}@banco-db:5432/banco_valmed
+      BANK_PUBLIC_URL: ${BANK_PUBLIC_URL:-}
+      BANK_HOST_PORT: ${BANK_HOST_PORT:-8086}
+      BANK_SANDBOX: ${BANK_SANDBOX:-true}
+      BANK_INITIAL_BALANCE: ${BANK_INITIAL_BALANCE:-1000.00}
+      BANK_SEED_DEMO: ${BANK_SEED_DEMO:-true}
+      BANK_SEED_API_KEY: ${BANK_SEED_API_KEY:-}
+      BANK_SEED_WEBHOOK_URL: ${BANK_SEED_WEBHOOK_URL:-}
+      BANK_SEED_WEBHOOK_SECRET: ${BANK_SEED_WEBHOOK_SECRET:-}
+      BANK_TOKEN_SECRET: ${BANK_TOKEN_SECRET:-}
+      RUST_LOG: ${RUST_LOG:-info,sqlx=warn}
+    depends_on:
+      banco-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${BANK_HOST_PORT:-8086}:8080"
+    restart: unless-stopped
+
+volumes:
+  banco-db-data:
+
+networks:
+  default:
+    name: banco-valmed

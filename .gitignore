@@ -1,0 +1,5 @@
+# Compilación (cargo)
+/target
+
+# Secretos locales: copia .env.example a .env
+.env
